@@ -1,99 +1,176 @@
-const express = require('express');
-const cors = require('cors');
-const http = require('http');
-const { Server } = require('socket.io');
+import { useState, useEffect } from "react";
+import axios from "axios";
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+const BASE_URL = "https://baordgame-backend-production.up.railway.app";
 
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-  },
-});
+export default function App() {
+  const [playerPositions, setPlayerPositions] = useState([1, 1]);
+  const [turn, setTurn] = useState(0);
+  const [dice, setDice] = useState(null);
+  const [winner, setWinner] = useState(null);
+  const [showIntro, setShowIntro] = useState(true);
+  const [showLovePopup, setShowLovePopup] = useState(false);
+  const [gameStarted, setGameStarted] = useState(false);
 
-// Initial game state
-let game = {
-  playerPositions: [1, 1],
-  turn: 0,
-  dice: null,
-  winner: null
-};
+  const loadGame = async () => {
+    const res = await axios.get(`${BASE_URL}/api/game`);
+    setPlayerPositions(res.data.playerPositions);
+    setTurn(res.data.turn);
+    setDice(res.data.dice);
+    setWinner(res.data.winner);
+  };
 
-const snakes = {
-  16: 5,
-  57: 22,
-  86: 66,
-  98: 27,
-  92: 71
-};
+  useEffect(() => {
+    loadGame();
+  }, []);
 
-const ladders = {
-  13: 49,
-  42: 79,
-  52: 71
-};
+  const rollDice = async () => {
+    const res = await axios.post(`${BASE_URL}/api/roll`);
+    setPlayerPositions(res.data.playerPositions);
+    setTurn(res.data.turn);
+    setDice(res.data.dice);
+    setWinner(res.data.winner);
+  };
 
-// Get current game state
-app.get('/api/game', (req, res) => {
-  res.json(game);
-});
+  const resetGame = async () => {
+    const res = await axios.post(`${BASE_URL}/api/reset`);
+    setPlayerPositions(res.data.playerPositions);
+    setTurn(res.data.turn);
+    setDice(res.data.dice);
+    setWinner(res.data.winner);
+  };
 
-// Roll dice and update state
-app.post('/api/roll', (req, res) => {
-  if (game.winner) {
-    io.emit('gameUpdated', game);
-    return res.json(game);
-  }
+  const renderBoard = () => {
+    const cells = [];
+    for (let row = 0; row < 10; row++) {
+      for (let col = 0; col < 10; col++) {
+        const base = 100 - row * 10;
+        const cellNum =
+          row % 2 === 0 ? base - col : base - (9 - col);
 
-  const roll = Math.floor(Math.random() * 6) + 1;
-  let positions = [...game.playerPositions];
-  let turn = game.turn;
-  let nextPos = positions[turn] + roll;
+        const isPlayer1 = playerPositions[0] === cellNum;
+        const isPlayer2 = playerPositions[1] === cellNum;
 
-  if (nextPos <= 100) {
-    positions[turn] = nextPos;
-    const snakeTarget = snakes[nextPos];
-    const ladderTarget = ladders[nextPos];
-    if (snakeTarget || ladderTarget) {
-      positions[turn] = snakeTarget || ladderTarget;
+        cells.push(
+          <div
+            key={cellNum}
+            className="flex items-center justify-center border text-xs relative h-12 w-12 bg-gradient-to-br from-yellow-100 to-yellow-200"
+          >
+            <span className="opacity-40 absolute top-1 left-1">{cellNum}</span>
+            <div className="flex absolute bottom-0 left-0 w-full h-full justify-center items-end space-x-1">
+              {isPlayer1 && (
+                <img src="/player1.png" alt="Player 1" className="w-12 h-12 z-10" />
+              )}
+              {isPlayer2 && (
+                <img src="/player2.png" alt="Player 2" className="w-12 h-12 z-10" />
+              )}
+            </div>
+          </div>
+        );
+      }
     }
-  }
-
-  let winner = null;
-  if (positions[0] === 100) winner = "Nida Wins 🎉";
-  if (positions[1] === 100) winner = "Ivan Wins 🎉";
-
-  game = {
-    playerPositions: positions,
-    turn: turn === 0 ? 1 : 0,
-    dice: roll,
-    winner
+    return cells;
   };
 
-  io.emit('gameUpdated', game); // 🔥 broadcast to all clients
-  res.json(game);
-});
+  return (
+    <div className="flex flex-col items-center p-6 space-y-6 bg-gradient-to-r from-purple-300 to-pink-300 min-h-screen">
 
-// Reset game
-app.post('/api/reset', (req, res) => {
-  game = {
-    playerPositions: [1, 1],
-    turn: 0,
-    dice: null,
-    winner: null
-  };
-  io.emit('gameUpdated', game); // 🔥 broadcast reset
-  res.json(game);
-});
+      {/* Intro Popup */}
+      {showIntro && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-60">
+          <div className="bg-white rounded-2xl shadow-lg p-6 w-80 text-center">
+            <h2 className="text-2xl font-bold mb-4">🎲 Ivan & Nida's Board Game 🎲</h2>
+            <button
+              onClick={() => {
+                setShowIntro(false);
+                setShowLovePopup(true);
+              }}
+              className="px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600"
+            >
+              Play
+            </button>
+          </div>
+        </div>
+      )}
 
-// On client connection, send current state
-io.on('connection', (socket) => {
-  console.log('A player connected');
-  socket.emit('gameUpdated', game);
-});
+      {/* Love Popup */}
+      {showLovePopup && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-60">
+          <div className="bg-white rounded-2xl shadow-lg p-6 w-80 text-center">
+            <h2 className="text-2xl font-bold mb-4">❤ Do you love Nida? ❤</h2>
+            <div className="flex justify-center space-x-4">
+              <button
+                onClick={() => setShowLovePopup(false)}
+                className="px-6 py-2 bg-gray-400 text-white rounded-xl hover:bg-gray-500"
+              >
+                No
+              </button>
+              <button
+                onClick={() => {
+                  setShowLovePopup(false);
+                  setGameStarted(true);
+                }}
+                className="px-6 py-2 bg-rose-300 text-white rounded-xl hover:bg-red-600"
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-const PORT = 4000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+      {/* Game Section */}
+      {gameStarted && (
+        <>
+          <h1 className="text-3xl font-bold text-white drop-shadow-lg">
+            🐍 Snake & Ladder 🎲
+          </h1>
+
+          {/* Board */}
+          <div className="relative">
+            <div className="grid grid-cols-10 border-4 border-yellow-600 rounded-lg shadow-lg">
+              {renderBoard()}
+            </div>
+
+            {/* Snake images */}
+            <img src="/snake1.png" className="absolute" style={{ top: "83%", left: "40%", width: "16%", transform: "rotate(70deg)" }} />
+            <img src="/snake3.png" className="absolute" style={{ top: "45%", left: "10%", width: "28%", transform: "rotate(90deg)" }} />
+            <img src="/snake4.png" className="absolute" style={{ top: "10%", left: "50%", width: "30%" }} />
+            <img src="/snake2.png" className="absolute" style={{ top: "-6%", left: "15%", width: "60%", transform: "rotate(-60deg)" }} />
+            <img src="/snake1.png" className="absolute" style={{ top: "8%", left: "77%", width: "25%", transform: "rotate(60deg)" }} />
+
+            {/* Ladder images */}
+            <img src="/ladder1.png" className="absolute" style={{ top: "22%", left: "85%", width: "8%", transform: "rotate(30deg)" }} />
+            <img src="/ladder1.png" className="absolute" style={{ top: "57%", left: "75%", width: "10%", transform: "rotate(25deg)" }} />
+            <img src="/ladder1.png" className="absolute" style={{ top: "28%", left: "10%", width: "10%", transform: "rotate(-6deg)" }} />
+          </div>
+
+          <p className="text-lg text-white drop-shadow-md">
+            {winner ? winner : `🎮 Turn: ${turn === 0 ? "Nida" : "Ivan"}`}
+          </p>
+
+          <div className="flex items-center space-x-3">
+            {dice && <img src={`/dice${dice}.png`} alt={`Dice ${dice}`} className="w-12 h-12" />}
+            <p className="text-xl text-white">Dice: {dice ?? "-"}</p>
+          </div>
+
+          <div className="flex space-x-4">
+            <button
+              onClick={rollDice}
+              disabled={!!winner}
+              className="px-4 py-2 bg-green-500 text-white rounded-xl shadow hover:bg-green-600"
+            >
+              Roll Dice
+            </button>
+            <button
+              onClick={resetGame}
+              className="px-4 py-2 bg-red-500 text-white rounded-xl shadow hover:bg-red-600"
+            >
+              Reset
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
