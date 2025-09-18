@@ -1,8 +1,18 @@
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
+const { Server } = require('socket.io');
+
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+  },
+});
 
 // Initial game state
 let game = {
@@ -33,7 +43,10 @@ app.get('/api/game', (req, res) => {
 
 // Roll dice and update state
 app.post('/api/roll', (req, res) => {
-  if (game.winner) return res.json(game);
+  if (game.winner) {
+    io.emit('gameUpdated', game);
+    return res.json(game);
+  }
 
   const roll = Math.floor(Math.random() * 6) + 1;
   let positions = [...game.playerPositions];
@@ -60,6 +73,7 @@ app.post('/api/roll', (req, res) => {
     winner
   };
 
+  io.emit('gameUpdated', game); // 🔥 broadcast to all clients
   res.json(game);
 });
 
@@ -71,8 +85,15 @@ app.post('/api/reset', (req, res) => {
     dice: null,
     winner: null
   };
+  io.emit('gameUpdated', game); // 🔥 broadcast reset
   res.json(game);
 });
 
+// On client connection, send current state
+io.on('connection', (socket) => {
+  console.log('A player connected');
+  socket.emit('gameUpdated', game);
+});
+
 const PORT = 4000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
